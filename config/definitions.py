@@ -30,8 +30,21 @@ QBITTORRENT_URL                 = get_config_value('QBITTORRENT_URL',           
 QBITTORRENT_USERNAME            = get_config_value('QBITTORRENT_USERNAME',          'qbittorrent',  False,  str,    '')
 QBITTORRENT_PASSWORD            = get_config_value('QBITTORRENT_PASSWORD',          'qbittorrent',  False,  str,    '')
 
+########################################################################################################################
+
+
 ########### Enrich setting variables
-if QBITTORRENT_URL: QBITTORRENT_URL += '/api/v2'
+
+if QBITTORRENT_URL: QBITTORRENT_URL =   QBITTORRENT_URL.rstrip('/') + '/api/v2'
+
+RADARR_MIN_VERSION          = '5.3.6.8608'
+SONARR_MIN_VERSION          = '4.0.1.1131'
+LIDARR_MIN_VERSION          = None
+READARR_MIN_VERSION         = None
+WHISPARR_MIN_VERSION        = '2.0.0.548'
+QBITTORRENT_MIN_VERSION     = '4.3.0'
+
+SUPPORTED_ARR_APPS  = ['RADARR', 'SONARR', 'LIDARR', 'READARR', 'WHISPARR']
 
 ########### Add Variables to Dictionary
 settingsDict = {}
@@ -70,12 +83,12 @@ for instance, settings in settingsDict['INSTANCES'].items():
     if ( not settings.haskey('URL') or len(settings['URL']) == 0 ):
         settingsDict['INSTANCES'][instance]['url'] = 'http://' + instance[arr_name] + ':' + port
 
-    settingsDict['INSTANCES'][instance]['url'] += end_point
+    settingsDict['INSTANCES'][instance]['url'] = settingsDict['INSTANCES'][instance]['url'].rstrip('/') + end_point
+
 
 ########################################################################################################################
 ########### Validate settings
-
-if (len(settingsDict['INSTANCES']) == 0):
+if not (IS_IN_PYTEST or len(settingsDict['INSTANCES']) > 0):
     print(f'[ ERROR ]: No Radarr/Sonarr/Lidarr/Readarr/Whisparr URLs specified (nothing to monitor)')
     exit()
 

@@ -21,12 +21,10 @@ setLoggingFormat(settingsDict)
 # Main function
 async def main(settingsDict):
 # Adds to settings Dict the instances that are actually configures
-        
-    for name, settings in settingsDict['INSTANCES'].items():
-        if settings['TYPE'] not in settingsDict['SUPPORTED_ARR_APPS']:
-            logger.verbose('Invalid type %s found. removing %s as is not a valid instance.', settings['TYPE'], name)
-            settingsDict['INSTANCES'].pop(name)
-
+    settingsDict['INSTANCES'] = []
+    for arrApplication in settingsDict['SUPPORTED_ARR_APPS']:
+        if settingsDict[arrApplication + '_URL']:
+            settingsDict['INSTANCES'].append(arrApplication)
 
     # Pre-populates the dictionaries (in classes) that track the items that were already caught as having problems or removed
     defectiveTrackingInstances = {} 
@@ -34,6 +32,10 @@ async def main(settingsDict):
         defectiveTrackingInstances[instance] = {}
     defective_tracker = Defective_Tracker(defectiveTrackingInstances)
     download_sizes_tracker = Download_Sizes_Tracker({})
+
+    # Get name of arr-instances
+    for instance in settingsDict['INSTANCES']:
+        settingsDict = await getArrInstanceName(settingsDict, instance)
 
     # Check outdated
     upgradeChecks(settingsDict)
@@ -60,8 +62,8 @@ async def main(settingsDict):
         protectedDownloadIDs, privateDowloadIDs = await getProtectedAndPrivateFromQbit(settingsDict)
 
         # Run script for each instance
-        for name, settings in settingsDict['INSTANCES'].items():
-            await queueCleaner(settingsDict, name, settings, defective_tracker, download_sizes_tracker, protectedDownloadIDs, privateDowloadIDs)
+        for instance in settingsDict['INSTANCES']:
+            await queueCleaner(settingsDict, instance, defective_tracker, download_sizes_tracker, protectedDownloadIDs, privateDowloadIDs)
         logger.verbose('')  
         logger.verbose('Queue clean-up complete!')  
 
