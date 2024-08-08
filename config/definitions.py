@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from config.parser import get_config_value
+from config.parser import get_instances
 from config.env_vars import *
 # Define data types and default values for settingsDict variables
 # General   
@@ -24,49 +25,12 @@ NO_STALLED_REMOVAL_QBIT_TAG     = get_config_value('NO_STALLED_REMOVAL_QBIT_TAG'
 IGNORE_PRIVATE_TRACKERS         = get_config_value('IGNORE_PRIVATE_TRACKERS',       'features',     False,  bool,   True)
 FAILED_IMPORT_MESSAGE_PATTERNS  = get_config_value('FAILED_IMPORT_MESSAGE_PATTERNS','features',     False,  list,   [])
 
-# Radarr
-RADARR_URL                      = get_config_value('RADARR_URL',                    'radarr',       False,  str)
-RADARR_KEY                      = None if RADARR_URL == None else \
-                                  get_config_value('RADARR_KEY',                    'radarr',       True,   str)
-
-# Sonarr        
-SONARR_URL                      = get_config_value('SONARR_URL',                    'sonarr',       False,  str)
-SONARR_KEY                      = None if SONARR_URL == None else \
-                                  get_config_value('SONARR_KEY',                    'sonarr',       True,   str)
-
-# Lidarr        
-LIDARR_URL                      = get_config_value('LIDARR_URL',                    'lidarr',       False,  str)
-LIDARR_KEY                      = None if LIDARR_URL == None else \
-                                  get_config_value('LIDARR_KEY',                    'lidarr',       True,   str)
-
-# Readarr       
-READARR_URL                     = get_config_value('READARR_URL',                   'readarr',       False,  str)
-READARR_KEY                     = None if READARR_URL == None else \
-                                  get_config_value('READARR_KEY',                   'readarr',       True,   str)
-
-# Whisparr    
-WHISPARR_URL                    = get_config_value('WHISPARR_URL',                  'whisparr',       False,  str)
-WHISPARR_KEY                    = None if WHISPARR_URL == None else \
-                                  get_config_value('WHISPARR_KEY',                  'whisparr',       True,   str)
-
 # qBittorrent   
 QBITTORRENT_URL                 = get_config_value('QBITTORRENT_URL',               'qbittorrent',  False,  str,    '')
 QBITTORRENT_USERNAME            = get_config_value('QBITTORRENT_USERNAME',          'qbittorrent',  False,  str,    '')
 QBITTORRENT_PASSWORD            = get_config_value('QBITTORRENT_PASSWORD',          'qbittorrent',  False,  str,    '')
 
-########################################################################################################################
-########### Validate settings
-
-if not (RADARR_URL or SONARR_URL or LIDARR_URL or READARR_URL or WHISPARR_URL):
-    print(f'[ ERROR ]: No Radarr/Sonarr/Lidarr/Readarr/Whisparr URLs specified (nothing to monitor)')
-    exit()
-
 ########### Enrich setting variables
-if RADARR_URL:      RADARR_URL      += '/api/v3'
-if SONARR_URL:      SONARR_URL      += '/api/v3'
-if LIDARR_URL:      LIDARR_URL      += '/api/v1'
-if READARR_URL:     READARR_URL     += '/api/v1'
-if WHISPARR_URL:    WHISPARR_URL    += '/api/v3'
 if QBITTORRENT_URL: QBITTORRENT_URL += '/api/v2'
 
 ########### Add Variables to Dictionary
@@ -74,4 +38,44 @@ settingsDict = {}
 for var_name in dir():
     if var_name.isupper():
         settingsDict[var_name] = locals()[var_name]
+
+
+arr_names                       = get_config_value('ARR_NAMES',                     'general',       True,  list, [])
+
+for arr_name in arr_names:
+    settingsDict['INSTANCES'][arr_name.upper()]['TYPE'] = get_config_value(arr_name.upper() + '_TYPE', arr_name, True, str, '')
+    settingsDict['INSTANCES'][arr_name.upper()]['URL']  = get_config_value(arr_name.upper() + '_URL', arr_name, True, str, '')
+    settingsDict['INSTANCES'][arr_name.upper()]['KEY']  = get_config_value(arr_name.upper() + '_KEY', arr_name, True, str, '')
+
+
+
+for instance, settings in settingsDict['INSTANCES'].items():
+    match settings['TYPE']:
+        case 'RADARR':
+            port = '7878'
+            end_point = '/api/v3'
+        case 'SONAR':
+            port = '8989'
+            end_point = '/api/v3'
+        case 'LIDARR':
+            port = '8686'
+            end_point = '/api/v1'
+        case 'READARR':
+            port = '8787'
+            end_point = '/api/v1'
+        case 'WHISPARR':
+            port = '6969'
+            end_point = '/api/v3'
+
+    if ( not settings.haskey('URL') or len(settings['URL']) == 0 ):
+        settingsDict['INSTANCES'][instance]['url'] = 'http://' + instance[arr_name] + ':' + port
+
+    settingsDict['INSTANCES'][instance]['url'] += end_point
+
+########################################################################################################################
+########### Validate settings
+
+if (len(settingsDict['INSTANCES']) == 0):
+    print(f'[ ERROR ]: No Radarr/Sonarr/Lidarr/Readarr/Whisparr URLs specified (nothing to monitor)')
+    exit()
 

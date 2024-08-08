@@ -13,7 +13,6 @@ config = configparser.ConfigParser()
 config.optionxform = str # maintain capitalization of config keys
 config.read(config_file_full_path)
 
-
 def config_section_map(section):
     'Load the config file into a dictionary'
     dict1 = {}
@@ -33,10 +32,15 @@ def get_config_value(key, config_section, is_mandatory, datatype, default_value 
     'Return for each key the corresponding value from the Docker Environment or the Config File'
     if IS_IN_DOCKER:
         config_value = os.environ.get(key)
+       
+
         if config_value is not None: 
             # print(f'The value retrieved for [{config_section}]: {key} is "{config_value}"')
             config_value = config_value
             # return config_value
+        elif  key == 'ARR_MAMES':
+            #returnt eh default ARR names if user hasn't supplied a list of their own
+            config_value = ['RADARR','SONARR','LIDARR','READARR','WHISPARR']
         elif is_mandatory:
             print(f'[ ERROR ]: Variable not specified in Docker environment: {key}' )
             sys.exit(0)
@@ -47,6 +51,9 @@ def get_config_value(key, config_section, is_mandatory, datatype, default_value 
 
     else:
         try:
+            key = key.rpartition('_')[2]
+            if(key =='MAMES'):
+                return get_instances()
             config_value = config_section_map(config_section).get(key)
         except configparser.NoSectionError:
             config_value = None
@@ -78,3 +85,9 @@ def get_config_value(key, config_section, is_mandatory, datatype, default_value 
     return config_value    
 
 
+def get_instances():
+    instances = {}
+    for section in config.sections():
+        if (section not in ('general','features','qbittorrent')):
+            instances[section] = config_section_map(section)
+    return instances

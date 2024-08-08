@@ -16,18 +16,6 @@ def setLoggingFormat(settingsDict):
     )
     return 
 
-
-async def getArrInstanceName(settingsDict, arrApp):
-    # Retrieves the names of the arr instances, and if not defined, sets a default
-    try:
-        if settingsDict[arrApp + '_URL']:
-            settingsDict[arrApp + '_NAME'] = (await rest_get(settingsDict[arrApp + '_URL']+'/system/status', settingsDict[arrApp + '_KEY']))['instanceName']
-    except:
-            settingsDict[arrApp + '_NAME'] = arrApp.capitalize()
-    return settingsDict
-
-
-
 def showSettings(settingsDict):
     # Prints out the settings
     fmt = '{0.days} days {0.hours} hours {0.minutes} minutes'
@@ -93,24 +81,24 @@ async def instanceChecks(settingsDict):
     logger.info('*** Check Instances ***')
     error_occured = False
     # Check ARR-apps
-    for instance in settingsDict['INSTANCES']:
-        if settingsDict[instance + '_URL']:    
+    for name, settings in settingsDict['INSTANCES'].items():
+        if settings['URL']:    
             try: 
-                await asyncio.get_event_loop().run_in_executor(None, lambda: requests.get(settingsDict[instance + '_URL']+'/system/status', params=None, headers={'X-Api-Key': settingsDict[instance + '_KEY']}, verify=settingsDict['SSL_VERIFICATION']))
+                await asyncio.get_event_loop().run_in_executor(None, lambda: requests.get(settings['URL']+'/system/status', params=None, headers={'X-Api-Key': settings['KEY']}, verify=settingsDict['SSL_VERIFICATION']))
             except Exception as error:
                 error_occured = True
-                logger.error('!! %s Error: !!', settingsDict[instance + '_NAME'])
+                logger.error('!! %s Error: !!', name)
                 logger.error(error)
             if not error_occured:                
-                current_version = (await rest_get(settingsDict[instance + '_URL']+'/system/status', settingsDict[instance + '_KEY']))['version']
-                if settingsDict[instance + '_MIN_VERSION']:
-                    if version.parse(current_version) < version.parse(settingsDict[instance + '_MIN_VERSION']):
+                current_version = (await rest_get(settings['URL']+'/system/status', settings['KEY']))['version']
+                if settingsDict[settings['TYPE'] + '_MIN_VERSION']:
+                    if version.parse(current_version) < version.parse(settingsDict[settings['TYPE'] + '_MIN_VERSION']):
                         error_occured = True
-                        logger.error('!! %s Error: !!', settingsDict[instance + '_NAME'])
-                        logger.error('Please update %s to at least version %s. Current version: %s', settingsDict[instance + '_NAME'], settingsDict[instance + '_MIN_VERSION'], current_version)
+                        logger.error('!! %s Error: !!', name)
+                        logger.error('Please update %s to at least version %s. Current version: %s', name, settingsDict[settings['TYPE'] + '_MIN_VERSION'], current_version)
             if not error_occured:
-                logger.info('OK | %s', settingsDict[instance + '_NAME'])     
-                logger.debug('Current version of %s: %s', instance, current_version)  
+                logger.info('OK | %s', name)     
+                logger.debug('Current version of %s: %s', name, current_version)  
 
     # Check Bittorrent
     if settingsDict['QBITTORRENT_URL']:
