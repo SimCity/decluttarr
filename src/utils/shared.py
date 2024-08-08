@@ -55,7 +55,7 @@ def protectedDownloadCheck(settingsDict, affectedItems, failType, protectedDownl
     return affectedItems
 
 
-async def execute_checks(settingsDict, affectedItems, failType, BASE_URL, API_KEY, NAME, deleted_downloads, defective_tracker, privateDowloadIDs, protectedDownloadIDs, addToBlocklist, doPrivateTrackerCheck, doProtectedDownloadCheck, doPermittedAttemptsCheck, extraParameters = []):
+async def execute_checks(settingsDict, affectedItems, failType, BASE_URL, API_KEY, NAME, deleted_downloads, defective_tracker, privateDowloadIDs, protectedDownloadIDs, addToBlocklist, doPrivateTrackerCheck, doProtectedDownloadCheck, doPermittedAttemptsCheck, extraParameters = {}):
     # Goes over the affected items and performs the checks that are parametrized
     try:
         # De-duplicates the affected items (one downloadid may be shared by multiple affected items)
@@ -78,9 +78,10 @@ async def execute_checks(settingsDict, affectedItems, failType, BASE_URL, API_KE
         for affectedItem in affectedItems:
             # Checks whether when removing the queue item from the *arr app the torrent should be kept
             removeFromClient = True
-            if 'keepTorrentForPrivateTrackers' in extraParameters:
+            if extraParameters.get('keepTorrentForPrivateTrackers', False):
                 if settingsDict['IGNORE_PRIVATE_TRACKERS'] and affectedItem['downloadId'] in privateDowloadIDs:
                     removeFromClient = False
+            
             # Removes the queue item
             await remove_download(settingsDict, BASE_URL, API_KEY, affectedItem, failType, addToBlocklist, deleted_downloads, removeFromClient)
         # Exit Logs
@@ -133,10 +134,19 @@ async def remove_download(settingsDict, BASE_URL, API_KEY, affectedItem, failTyp
     # Removes downloads and creates log entry
     logger.debug('remove_download/deleted_downloads.dict IN: %s', str(deleted_downloads.dict)) 
     if affectedItem['downloadId'] not in deleted_downloads.dict:
+        # "schizophrenic" removal:
+        # Yes, the failed imports are removed from the -arr apps (so the removal kicks still in)
+        # But in the torrent client they are kept
         if removeFromClient:
             logger.info('>>> Removing %s download: %s', failType, affectedItem['title'])
         else:
-            logger.info('>>> Removing %s download (without removing torrent): %s', failType, affectedItem['title'])            
+            logger.info('>>> Removing %s download (without removing from torrent client): %s', failType, affectedItem['title'])  
+        
+        # Print out detailed removal messages (if any were added in the jobs)
+        if 'removal_messages' in affectedItem:
+            for removal_message in affectedItem['removal_messages']:
+                logger.info(removal_message)
+            
         if not settingsDict['TEST_RUN']: 
             await rest_delete(f'{BASE_URL}/queue/{affectedItem["id"]}', API_KEY, {'removeFromClient': removeFromClient, 'blocklist': addToBlocklist}) 
         deleted_downloads.dict.append(affectedItem['downloadId'])   
