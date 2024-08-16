@@ -14,14 +14,25 @@ REMOVE_STALLED              = True
 REMOVE_UNMONITORED          = True
 MIN_DOWNLOAD_SPEED          = 100
 PERMITTED_ATTEMPTS          = 3
-NO_STALLED_REMOVAL_QBIT_TAG = Don't Kill
+NO_STALLED_REMOVAL_TAG      = Don't Kill
 IGNORE_PRIVATE_TRACKERS     = FALSE
 FAILED_IMPORT_MESSAGE_PATTERNS  = ["Not a Custom Format upgrade for existing", "Not an upgrade for existing"]
 
+# [Download client name]    the name used in the Arr's to identify this torrent download client
+# TYPE                      = What type of client it is (qbittorrent, deluge suppurted so far)
+# URL                       = URL of download client, if undefined, download client name will be used with default port.
+# KEY                       = API key of client if it uses this
+# USERNAME                  = If no Key, you need to proivde a username and password (note, deluge ignores the username and just uses the password)
+# PASSWORD                  = Password for the given user
+
 [qbittorrent]
-QBITTORRENT_URL             = http://qbittorrent:8080
-QBITTORRENT_USERNAME        = Your name (or empty)
-QBITTORRENT_PASSWORD        = Your password (or empty)
+URL             = http://qbittorrent:8080
+USERNAME        = Your name (or empty)
+PASSWORD        = Your password (or empty)
+
+[deluge]
+URL             = http://deluge:8080
+PASSWORD        = Your password (or empty)
 
 # [Instance Name]      Unique name for this instance
 # TYPE                 = Which Arr it is: RADARR,SONARR,LIDARR, READARR, WHISPARR

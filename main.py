@@ -9,6 +9,7 @@ from src.utils.loadScripts import *
 from src.decluttarr import queueCleaner
 from src.utils.rest import rest_get, rest_post 
 from src.utils.trackers import Defective_Tracker, Download_Sizes_Tracker  
+from src.utils.downloader import deluge, genericDownloader, qBittorrent
 
 # Hide SSL Verification Warnings
 if settingsDict['SSL_VERIFICATION']==False:
@@ -20,20 +21,19 @@ setLoggingFormat(settingsDict)
 
 # Main function
 async def main(settingsDict):
-# Adds to settings Dict the instances that are actually configures
         
-    for name, settings in settingsDict['INSTANCES'].items():
-        if settings['TYPE'] not in settingsDict['SUPPORTED_ARR_APPS']:
-            logger.verbose('Invalid type %s found. removing %s as is not a valid instance.', settings['TYPE'], name)
-            settingsDict['INSTANCES'].pop(name)
-
-
     # Pre-populates the dictionaries (in classes) that track the items that were already caught as having problems or removed
     defectiveTrackingInstances = {} 
+
     for instance in settingsDict['INSTANCES']:
         defectiveTrackingInstances[instance] = {}
+
     defective_tracker = Defective_Tracker(defectiveTrackingInstances)
     download_sizes_tracker = Download_Sizes_Tracker({})
+
+    # Get name of arr-instances
+    for instance in settingsDict['INSTANCES']:
+        settingsDict = await getArrInstanceName(settingsDict, instance)
 
     # Check outdated
     upgradeChecks(settingsDict)
@@ -44,11 +44,12 @@ async def main(settingsDict):
     # Current Settings
     showSettings(settingsDict)
 
-    # Check Minimum Version and if instances are reachable and retrieve qbit cookie
+    # Check Minimum Version and if instances are reachable and retrieve and required auth cookies
     settingsDict = await instanceChecks(settingsDict)
 
-    # Create qBit protection tag if not existing
-    await createQbitProtectionTag(settingsDict)
+    # Create protection tag if not existing
+    for downloader in settingsDict['DOWNLOADERS']:
+        await downloader.CreateProtectionTag(settingsDict['NO_STALLED_REMOVAL_TAG'])
 
     # Show Logger Level
     showLoggerLevel(settingsDict)
@@ -57,11 +58,11 @@ async def main(settingsDict):
     while True:
         logger.verbose('-' * 50)
         # Cache protected (via Tag) and private torrents 
-        protectedDownloadIDs, privateDowloadIDs = await getProtectedAndPrivateFromQbit(settingsDict)
+        protectedDownloadIDs, privateDowloadIDs = await getProtectedAndPrivateTorrents(settingsDict)
 
         # Run script for each instance
-        for name, settings in settingsDict['INSTANCES'].items():
-            await queueCleaner(settingsDict, name, settings, defective_tracker, download_sizes_tracker, protectedDownloadIDs, privateDowloadIDs)
+        for instance in settingsDict['INSTANCES']:
+            await queueCleaner(settingsDict, instance, defective_tracker, download_sizes_tracker, protectedDownloadIDs, privateDowloadIDs)
         logger.verbose('')  
         logger.verbose('Queue clean-up complete!')  
 

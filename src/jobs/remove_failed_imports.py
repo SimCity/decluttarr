@@ -3,11 +3,11 @@ import sys, os, traceback
 import logging, verboselogs
 logger = verboselogs.VerboseLogger(__name__)
 
-async def remove_failed_imports(settingsDict, BASE_URL, API_KEY, NAME, deleted_downloads, defective_tracker, protectedDownloadIDs, privateDowloadIDs):
+async def remove_failed_imports(settingsDict, arr, deleted_downloads, defective_tracker, protectedDownloadIDs, privateDowloadIDs):
     # Detects downloads stuck downloading meta data and triggers repeat check and subsequent delete. Adds to blocklist   
     try:
         failType = 'failed import'
-        queue = await get_queue(BASE_URL, API_KEY)    
+        queue = await arr.get_queue()    
         logger.debug('remove_failed_imports/queue IN: %s', formattedQueueInfo(queue))
         if not queue: return 0
         
@@ -56,9 +56,7 @@ async def remove_failed_imports(settingsDict, BASE_URL, API_KEY, NAME, deleted_d
             'settingsDict': settingsDict,
             'affectedItems': affectedItems,
             'failType': failType,
-            'BASE_URL': BASE_URL,
-            'API_KEY': API_KEY,
-            'NAME': NAME,
+            'arr': arr,
             'deleted_downloads': deleted_downloads,
             'defective_tracker': defective_tracker,
             'privateDowloadIDs': privateDowloadIDs,
@@ -73,5 +71,5 @@ async def remove_failed_imports(settingsDict, BASE_URL, API_KEY, NAME, deleted_d
 
         return len(affectedItems)
     except Exception as error:
-        errorDetails(NAME, error)
+        errorDetails(arr.name, error)
         return 0

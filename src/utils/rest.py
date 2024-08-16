@@ -3,6 +3,7 @@ import logging
 import asyncio
 import requests
 from requests.exceptions import RequestException
+
 import json
 from config.definitions import settingsDict
 
@@ -39,10 +40,11 @@ async def rest_delete(url, api_key, params=None):
         return None
 
 # POST
-async def rest_post(url, data=None, json=None, headers=None, cookies=None):
+async def rest_post(url, data=None, json=None, headers=None, cookies=None, auth=None):
     if settingsDict['TEST_RUN']: return
+
     try:
-        response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.post(url, data=data, json=json, headers=headers, cookies=cookies, verify=settingsDict['SSL_VERIFICATION']))
+        response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.post(url, data=data, json=json, headers=headers, cookies=cookies, auth=auth, verify=settingsDict['SSL_VERIFICATION']))
         response.raise_for_status()
         if response.status_code in (200,201):
             return None

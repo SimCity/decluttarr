@@ -4,16 +4,8 @@ logger = verboselogs.VerboseLogger(__name__)
 from src.utils.rest import (rest_get, rest_delete, rest_post)
 from src.utils.nest_functions import (add_keys_nested_dict, nested_get)
 import sys, os, traceback
-
-async def get_queue(BASE_URL, API_KEY, params = {}):
-    # Retrieves the current queue
-    await rest_post(url=BASE_URL+'/command', json={'name': 'RefreshMonitoredDownloads'}, headers={'X-Api-Key': API_KEY})
-    totalRecords = (await rest_get(f'{BASE_URL}/queue', API_KEY, params))['totalRecords']
-    if totalRecords == 0:
-        return None
-    queue = await rest_get(f'{BASE_URL}/queue', API_KEY, {'page': '1', 'pageSize': totalRecords}|params) 
-    queue = filterOutDelayedQueueItems(queue)
-    return queue
+from src.utils.downloader import *
+from utils.arr import *
 
 def filterOutDelayedQueueItems(queue):
     # Ignores delayed queue items
@@ -25,11 +17,12 @@ def filterOutDelayedQueueItems(queue):
         # Use get() method with default value "No indexer" if 'indexer' key does not exist
         indexer = record.get('indexer', 'No indexer')
         protocol = record.get('protocol', 'No protocol')
-        combination = (record['title'], protocol, indexer)
+        downloadClient = record.get('downloadClient', 'No downloadClient')
+        combination = (record['title'], protocol, indexer, downloadClient)
         if record['status'] == 'delay':
             if combination not in seen_combinations:
                 seen_combinations.add(combination)
-                logger.debug('>>> Delayed queue item ignored: %s (Protocol: %s, Indexer: %s)', record['title'], protocol, indexer)
+                logger.debug('>>> Delayed queue item ignored: %s (Protocol: %s, Download Client: %s, Indexer: %s)', record['title'], protocol, downloadClient, indexer)
         else:
             filtered_records.append(record)
     if not filtered_records:
@@ -55,7 +48,7 @@ def protectedDownloadCheck(settingsDict, affectedItems, failType, protectedDownl
     return affectedItems
 
 
-async def execute_checks(settingsDict, affectedItems, failType, BASE_URL, API_KEY, NAME, deleted_downloads, defective_tracker, privateDowloadIDs, protectedDownloadIDs, addToBlocklist, doPrivateTrackerCheck, doProtectedDownloadCheck, doPermittedAttemptsCheck, extraParameters = {}):
+async def execute_checks(settingsDict, affectedItems, failType, arr, deleted_downloads, defective_tracker, privateDowloadIDs, protectedDownloadIDs, addToBlocklist, doPrivateTrackerCheck, doProtectedDownloadCheck, doPermittedAttemptsCheck, extraParameters = {}):
     # Goes over the affected items and performs the checks that are parametrized
     try:
         # De-duplicates the affected items (one downloadid may be shared by multiple affected items)
@@ -72,7 +65,7 @@ async def execute_checks(settingsDict, affectedItems, failType, BASE_URL, API_KE
             affectedItems = protectedDownloadCheck(settingsDict, affectedItems, failType, protectedDownloadIDs)
         # Checks if failing more often than permitted 
         if doPermittedAttemptsCheck:
-            affectedItems = permittedAttemptsCheck(settingsDict, affectedItems, failType, BASE_URL, defective_tracker)
+            affectedItems = permittedAttemptsCheck(settingsDict, arr, affectedItems, failType, defective_tracker)
             
         # Deletes all downloads that have not survived the checks
         for affectedItem in affectedItems:
@@ -83,15 +76,15 @@ async def execute_checks(settingsDict, affectedItems, failType, BASE_URL, API_KE
                     removeFromClient = False
             
             # Removes the queue item
-            await remove_download(settingsDict, BASE_URL, API_KEY, affectedItem, failType, addToBlocklist, deleted_downloads, removeFromClient)
+            await remove_download(settingsDict, arr, affectedItem, failType, addToBlocklist, deleted_downloads, removeFromClient)
         # Exit Logs
         if settingsDict['LOG_LEVEL'] == 'DEBUG':
-            queue = await get_queue(BASE_URL, API_KEY)      
+            queue = await arr.get_queue()      
             logger.debug('execute_checks/queue OUT (failType: %s): %s', failType, formattedQueueInfo(queue))
         # Return removed items
         return affectedItems
     except Exception as error:
-        errorDetails(NAME, error)
+        errorDetails(arr.name, error)
         return []
 
 def permittedAttemptsCheck(settingsDict, affectedItems, failType, BASE_URL, defective_tracker):
@@ -130,7 +123,7 @@ def permittedAttemptsCheck(settingsDict, affectedItems, failType, BASE_URL, defe
     logger.debug('permittedAttemptsCheck/defective_tracker.dict OUT: %s', str(defective_tracker.dict))
     return affectedItems
 
-async def remove_download(settingsDict, BASE_URL, API_KEY, affectedItem, failType, addToBlocklist, deleted_downloads, removeFromClient):
+async def remove_download(settingsDict, arr, affectedItem, failType, addToBlocklist, deleted_downloads, removeFromClient):
     # Removes downloads and creates log entry
     logger.debug('remove_download/deleted_downloads.dict IN: %s', str(deleted_downloads.dict)) 
     if affectedItem['downloadId'] not in deleted_downloads.dict:
@@ -148,7 +141,7 @@ async def remove_download(settingsDict, BASE_URL, API_KEY, affectedItem, failTyp
                 logger.info(removal_message)
             
         if not settingsDict['TEST_RUN']: 
-            await rest_delete(f'{BASE_URL}/queue/{affectedItem["id"]}', API_KEY, {'removeFromClient': removeFromClient, 'blocklist': addToBlocklist}) 
+            await arr.remove_download() 
         deleted_downloads.dict.append(affectedItem['downloadId'])   
     
     logger.debug('remove_download/deleted_downloads.dict OUT: %s', str(deleted_downloads.dict)) 
@@ -184,10 +177,12 @@ def formattedQueueInfo(queue):
         return 'error'
 
 
-async def qBitOffline(settingsDict, failType, NAME):
-    if settingsDict['QBITTORRENT_URL']:
-        qBitConnectionStatus = (await rest_get(settingsDict['QBITTORRENT_URL']+'/sync/maindata', cookies=settingsDict['QBIT_COOKIE']))['server_state']['connection_status']
-        if qBitConnectionStatus == 'disconnected':
-            logger.warning('>>> qBittorrent is disconnected. Skipping %s queue cleaning failed on %s.',failType, NAME)
-            return True
-    return False
+async def DownloaderOffline(settingsDict):
+    offlineClients = []
+    for downloader in settingsDict['DOWNLOADERS']:
+        if downloader.IsOffline():
+            
+            offlineClients.append(downloader)
+
+ 
+    return offlineClients

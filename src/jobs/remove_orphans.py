@@ -1,14 +1,14 @@
-from src.utils.shared import (errorDetails, formattedQueueInfo, get_queue, privateTrackerCheck, protectedDownloadCheck, execute_checks, permittedAttemptsCheck, remove_download)
+from src.utils.shared import (errorDetails, formattedQueueInfo, execute_checks)
 import sys, os, traceback
 import logging, verboselogs
 logger = verboselogs.VerboseLogger(__name__)
 
-async def remove_orphans(settingsDict, BASE_URL, API_KEY, NAME, deleted_downloads, defective_tracker, protectedDownloadIDs, privateDowloadIDs, full_queue_param):
+async def remove_orphans(settingsDict, arr, deleted_downloads, defective_tracker, protectedDownloadIDs, privateDowloadIDs):
     # Removes downloads belonging to movies/tv shows that have been deleted in the meantime. Does not add to blocklist
     try:
         failType = 'orphan'
-        full_queue = await get_queue(BASE_URL, API_KEY, params = {full_queue_param: True})
-        queue = await get_queue(BASE_URL, API_KEY) 
+        full_queue = await arr.get_queue(True)
+        queue = await arr.get_queue() 
         logger.debug('remove_orphans/full queue IN: %s', formattedQueueInfo(full_queue)) 
         if not full_queue: return 0 # By now the queue may be empty 
         logger.debug('remove_orphans/queue IN: %s', formattedQueueInfo(queue))
@@ -22,13 +22,13 @@ async def remove_orphans(settingsDict, BASE_URL, API_KEY, NAME, deleted_download
             if queueItem['id'] not in queueIDs:
                 affectedItems.append(queueItem)
 
-        affectedItems = await execute_checks(settingsDict, affectedItems, failType, BASE_URL, API_KEY, NAME, deleted_downloads, defective_tracker, privateDowloadIDs, protectedDownloadIDs, 
+        affectedItems = await execute_checks(settingsDict, affectedItems, failType, arr, deleted_downloads, defective_tracker, privateDowloadIDs, protectedDownloadIDs, 
                                             addToBlocklist = False, 
                                             doPrivateTrackerCheck = True, 
                                             doProtectedDownloadCheck = True, 
                                             doPermittedAttemptsCheck = False)
-        logger.debug('remove_orphans/full queue OUT: %s', formattedQueueInfo(await get_queue(BASE_URL, API_KEY, params = {full_queue_param: True})))
+        logger.debug('remove_orphans/full queue OUT: %s', formattedQueueInfo(await arr.get_queue(True)))
         return len(affectedItems)
     except Exception as error:
-        errorDetails(NAME, error)
+        errorDetails(arr.name, error)
         return 0        

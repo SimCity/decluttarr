@@ -9,6 +9,7 @@ from src.utils.loadScripts import *
 from src.decluttarr import queueCleaner
 from src.utils.rest import rest_get, rest_post 
 from src.utils.trackers import Defective_Tracker, Download_Sizes_Tracker  
+from src.utils.downloader import deluge, genericDownloader, qBittorrent
 
 # Hide SSL Verification Warnings
 if settingsDict['SSL_VERIFICATION']==False:
@@ -20,16 +21,13 @@ setLoggingFormat(settingsDict)
 
 # Main function
 async def main(settingsDict):
-# Adds to settings Dict the instances that are actually configures
-    settingsDict['INSTANCES'] = []
-    for arrApplication in settingsDict['SUPPORTED_ARR_APPS']:
-        if settingsDict[arrApplication + '_URL']:
-            settingsDict['INSTANCES'].append(arrApplication)
-
+    logger.setLevel(settingsDict['LOG_LEVEL'])
     # Pre-populates the dictionaries (in classes) that track the items that were already caught as having problems or removed
     defectiveTrackingInstances = {} 
+   
     for instance in settingsDict['INSTANCES']:
         defectiveTrackingInstances[instance] = {}
+
     defective_tracker = Defective_Tracker(defectiveTrackingInstances)
     download_sizes_tracker = Download_Sizes_Tracker({})
 
@@ -46,11 +44,12 @@ async def main(settingsDict):
     # Current Settings
     showSettings(settingsDict)
 
-    # Check Minimum Version and if instances are reachable and retrieve qbit cookie
+    # Check Minimum Version and if instances are reachable and retrieve cookie if required
     settingsDict = await instanceChecks(settingsDict)
 
-    # Create qBit protection tag if not existing
-    await createQbitProtectionTag(settingsDict)
+    # Create protection tag if not existing
+    for downloader in settingsDict['DOWNLOADERS']:
+        await downloader.CreateProtectionTag(settingsDict['NO_STALLED_REMOVAL_TAG'])
 
     # Show Logger Level
     showLoggerLevel(settingsDict)
@@ -59,7 +58,7 @@ async def main(settingsDict):
     while True:
         logger.verbose('-' * 50)
         # Cache protected (via Tag) and private torrents 
-        protectedDownloadIDs, privateDowloadIDs = await getProtectedAndPrivateFromQbit(settingsDict)
+        protectedDownloadIDs, privateDowloadIDs = await getProtectedAndPrivateTorrents(settingsDict)
 
         # Run script for each instance
         for instance in settingsDict['INSTANCES']:

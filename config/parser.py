@@ -6,7 +6,12 @@ import json
 from config.env_vars import *
 
 # Configures how to parse configuration file
+
 config_file_name = 'config.conf'
+
+if CONFIG_FILE and len(CONFIG_FILE)>5:
+    config_file_name = CONFIG_FILE
+
 config_file_full_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), config_file_name)
 sys.tracebacklimit = 0  # dont show stack traces in prod mode
 config = configparser.ConfigParser()
@@ -30,7 +35,7 @@ def cast(value, type_):
 
 def get_config_value(key, config_section, is_mandatory, datatype, default_value = None):
     'Return for each key the corresponding value from the Docker Environment or the Config File'
-    if IS_IN_DOCKER:
+    if IS_IN_DOCKER and not(CONFIG_FILE):
         config_value = os.environ.get(key)
        
 
@@ -38,9 +43,6 @@ def get_config_value(key, config_section, is_mandatory, datatype, default_value 
             # print(f'The value retrieved for [{config_section}]: {key} is "{config_value}"')
             config_value = config_value
             # return config_value
-        elif  key == 'ARR_MAMES':
-            #returnt eh default ARR names if user hasn't supplied a list of their own
-            config_value = ['RADARR','SONARR','LIDARR','READARR','WHISPARR']
         elif is_mandatory:
             print(f'[ ERROR ]: Variable not specified in Docker environment: {key}' )
             sys.exit(0)
@@ -51,10 +53,16 @@ def get_config_value(key, config_section, is_mandatory, datatype, default_value 
 
     else:
         try:
-            key = key.rpartition('_')[2]
-            if(key =='MAMES'):
-                return get_instances()
-            config_value = config_section_map(config_section).get(key)
+            check = key.rpartition('_')[2]
+            name = key.rpartition('_')[0]
+            if(name == config_section):
+                key = check
+            if(check == 'NAMES'):
+                config_value = get_instances()
+                if(len(config_value) == 0):
+                    config_value = None
+            else:
+                config_value = config_section_map(config_section).get(key)
         except configparser.NoSectionError:
             config_value = None
         if config_value is not None:

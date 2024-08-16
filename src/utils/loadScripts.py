@@ -6,6 +6,8 @@ import requests
 from src.utils.rest import rest_get, rest_post # 
 import asyncio
 from packaging import version
+from src.utils.downloader import *
+from utils.arr import *
 
 def setLoggingFormat(settingsDict):
     # Sets logger output to specific format
@@ -20,38 +22,38 @@ def setLoggingFormat(settingsDict):
 async def getArrInstanceName(settingsDict, arrApp):
     # Retrieves the names of the arr instances, and if not defined, sets a default (should in theory not be requried, since UI already enforces a value)
     try:
-        if arrApp['URL']:
-            settingsDict[arrApp]['TYPE'] = (await rest_get(arrApp['URL']+'/system/status', arrApp['KEY']))['instanceName']
+
+        arrType = arrApp.GetType()
+        if not(arrType.uppper() == type(arrApp).__name__):
+            logger.warning('Type doesn\'t match for %s: Expected %s, found %s', arrApp, type(arrApp).__name__, arrType)
+            settingsDict['INSTANCES'].pop(arrApp)
     except:
-            logger.debug('Could not retireve instance name, using value as is: %s', settingsDict[arrApp]['TYPE'])
+            logger.debug('Could not retireve instance name for %s, using value as is: %s', arrApp, settingsDict[arrApp]['TYPE'])
     
     return settingsDict
 
-async def getProtectedAndPrivateFromQbit(settingsDict):
-    # Returns two lists containing the hashes of Qbit that are either protected by tag, or are private trackers (if IGNORE_PRIVATE_TRACKERS is true)
+async def getProtectedAndPrivateTorrents(settingsDict):
+    # Returns two lists containing the values found in downloadId of Arrs that are either protected by tag, or are private trackers (if IGNORE_PRIVATE_TRACKERS is true)
     protectedDownloadIDs = []
     privateDowloadIDs = []
-    if settingsDict['QBITTORRENT_URL']:
+    for downloader in settingsDict['DOWNLOADERS']:
         # Fetch all torrents
-        qbitItems = await rest_get(settingsDict['QBITTORRENT_URL']+'/torrents/info',params={}, cookies=settingsDict['QBIT_COOKIE'])
-        # Fetch protected torrents (by tag)
-        for qbitItem in qbitItems:
-            if settingsDict['NO_STALLED_REMOVAL_QBIT_TAG'] in qbitItem.get('tags'):
-                protectedDownloadIDs.append(str.upper(qbitItem['hash']))
-        # Fetch private torrents
-        if settingsDict['IGNORE_PRIVATE_TRACKERS']:
-            for qbitItem in qbitItems:           
-                qbitItemProperties = await rest_get(settingsDict['QBITTORRENT_URL']+'/torrents/properties',params={'hash': qbitItem['hash']}, cookies=settingsDict['QBIT_COOKIE'])
-                qbitItem['is_private'] = qbitItemProperties.get('is_private', None) # Adds the is_private flag to qbitItem info for simplified logging
-                if qbitItemProperties.get('is_private', False):
-                    privateDowloadIDs.append(str.upper(qbitItem['hash']))
-        logger.debug('main/getProtectedAndPrivateFromQbit/qbitItems: %s', str([{"hash": str.upper(item["hash"]), "name": item["name"], "category": item["category"], "tags": item["tags"], "is_private": item.get("is_private", None)} for item in qbitItems]))
-    
-    logger.debug('main/getProtectedAndPrivateFromQbit/protectedDownloadIDs: %s', str(protectedDownloadIDs))
-    logger.debug('main/getProtectedAndPrivateFromQbit/privateDowloadIDs: %s', str(privateDowloadIDs))   
+
+        tempProtectedDownloadIDs, tempPrivateDowloadIDs = downloader.GetProtectedAndPrivate(settingsDict)
+
+        logger.debug('main/getProtectedAndPrivateFrom%s/protectedDownloadIDs: %s', downloader.name.title(), str(protectedDownloadIDs))
+        logger.debug('main/getProtectedAndPrivateFrom%s/privateDowloadIDs: %s', downloader.name.title(), str(privateDowloadIDs))   
+
+        protectedDownloadIDs.extend(tempProtectedDownloadIDs)
+        privateDowloadIDs.extend(tempPrivateDowloadIDs)
+
+
+
 
     return protectedDownloadIDs, privateDowloadIDs
-    
+
+
+       
 def showWelcome():
     # Welcome Message
     logger.info('#' * 50)
@@ -95,13 +97,13 @@ def showSettings(settingsDict):
     logger.info('') 
     logger.info('*** Configured Instances ***')
     
-    for instance in settingsDict['INSTANCES']:
-        if settingsDict[instance + '_URL']: 
+    for name , settings in settingsDict['INSTANCES'].items():
+        if settings['URL']: 
             logger.info(
                     '%s%s: %s',
-                    instance.title(),
-                    f" ({settingsDict.get(instance + '_NAME')})" if settingsDict.get(instance + '_NAME') != instance.title() else "",
-                    (settingsDict[instance + '_URL']).split('/api')[0]
+                    name.title(),
+                    f" ({settings['TYPE'].title()})" if settings['TYPE'].title() != name.title() else "",
+                    (settings['URL']).split('/api')[0]
                 )
 
     if settingsDict['QBITTORRENT_URL']: 
@@ -130,83 +132,30 @@ async def instanceChecks(settingsDict):
     logger.info('*** Check Instances ***')
     error_occured = False
     # Check ARR-apps
-    for name, settings in settingsDict['INSTANCES'].items():
-        if settings['URL']:    
-            try: 
-                response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.get(settings['URL']+'/system/status', params=None, headers={'X-Api-Key': settings['KEY']}, verify=settingsDict['SSL_VERIFICATION']))
-                response.raise_for_status()
-            except Exception as error:
-                error_occured = True
-                logger.error('!! %s Error: !!', name)
-                logger.error('> %s', error)
-                if isinstance(error, requests.exceptions.HTTPError) and error.response.status_code == 401:
-                    logger.error ('> Have you configured %s correctly?', name + '_KEY')
+    for arrApp in settingsDict['INSTANCES']:
+        error_occured = arrApp.InstanceCheck()
+    
+        if error_occured:
+            logger.warning('At least one instance had a problem. Waiting for 60 seconds, then exiting Decluttarr.')      
+            await asyncio.sleep(60)
+            exit()
 
-            if not error_occured:  
-                # Check if network settings are pointing to the right Arr-apps
-                current_app = (await rest_get(settings['URL']+'/system/status', settings['KEY']))['appName']
-                if current_app.upper() != settings['TYPE']:
-                    error_occured = True
-                    logger.error('!! %s Error: !!', name)                    
-                    logger.error('> Your %s points to a %s instance, rather than %s. Did you specify the wrong IP?', name + '_URL', current_app, settings['TYPE'])
- 
-            if not error_occured:
-                # Check minimum version requirements are met
-                current_version = (await rest_get(settings['_URL']+'/system/status', settings['KEY']))['version']
-                if settingsDict[settings['TYPE'] + '_MIN_VERSION']:
-                    if version.parse(current_version) < version.parse(settingsDict[settings['TYPE'] + '_MIN_VERSION']):
-                        error_occured = True
-                        logger.error('!! %s Error: !!', name)
-                        logger.error('> Please update %s to at least version %s. Current version: %s', name, settingsDict[settings['TYPE'] + '_MIN_VERSION'], current_version)
-            if not error_occured:
-                logger.info('OK | %s', name)     
-                logger.debug('Current version of %s: %s', name, current_version)  
-
+    error_occured = False
     # Check Bittorrent
-    if settingsDict['QBITTORRENT_URL']:
-        # Checking if qbit can be reached, and checking if version is OK
-        try: 
-            response = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.post(settingsDict['QBITTORRENT_URL']+'/auth/login', data={'username': settingsDict['QBITTORRENT_USERNAME'], 'password': settingsDict['QBITTORRENT_PASSWORD']}, headers={'content-type': 'application/x-www-form-urlencoded'}, verify=settingsDict['SSL_VERIFICATION']))
-            if response.text == 'Fails.':
-                raise ConnectionError('Login failed.')
-            response.raise_for_status()
-            settingsDict['QBIT_COOKIE'] = {'SID': response.cookies['SID']} 
-        except Exception as error:
-            error_occured = True
-            logger.error('!! %s Error: !!', 'qBittorrent')
-            logger.error('> %s', error)
-            logger.error('> Details:')
-            logger.error(response.text)
+    for downloader in settingsDict['DOWNLOADERS']:
+        error_occured = downloader.instanceCheck(settingsDict, downloader)
 
-        if not error_occured:
-            qbit_version = await rest_get(settingsDict['QBITTORRENT_URL']+'/app/version',cookies=settingsDict['QBIT_COOKIE'])
-            qbit_version = qbit_version[1:] # version without _v
-            if version.parse(qbit_version) < version.parse(settingsDict['QBITTORRENT_MIN_VERSION']):
-                error_occured = True
-                logger.error('-- | %s *** Error: %s ***', 'qBittorrent', 'Please update qBittorrent to at least version %s Current version: %s',settingsDict['QBITTORRENT_MIN_VERSION'], qbit_version)
+        if error_occured:
+            logger.warning('At least one downloader had a problem. Waiting for 60 seconds, then exiting Decluttarr.')      
+            await asyncio.sleep(60)
+            exit()
 
-        if not error_occured:
-            logger.info('OK | %s', 'qBittorrent')
-            logger.debug('Current version of %s: %s', 'qBittorrent', qbit_version)  
-
-
-    if error_occured:
-        logger.warning('At least one instance had a problem. Waiting for 60 seconds, then exiting Decluttarr.')      
-        await asyncio.sleep(60)
-        exit()
 
     logger.info('') 
     return settingsDict
 
-async def createQbitProtectionTag(settingsDict):
-    # Creates the qBit Protection tag if not already present
-    if settingsDict['QBITTORRENT_URL']:
-        current_tags = await rest_get(settingsDict['QBITTORRENT_URL']+'/torrents/tags',cookies=settingsDict['QBIT_COOKIE'])
-        if not settingsDict['NO_STALLED_REMOVAL_QBIT_TAG'] in current_tags:
-            if settingsDict['QBITTORRENT_URL']: 
-                logger.info('Creating tag in qBittorrent: %s', settingsDict['NO_STALLED_REMOVAL_QBIT_TAG'])  
-                if not settingsDict['TEST_RUN']:
-                    await rest_post(url=settingsDict['QBITTORRENT_URL']+'/torrents/createTags', data={'tags': settingsDict['NO_STALLED_REMOVAL_QBIT_TAG']}, headers={'content-type': 'application/x-www-form-urlencoded'}, cookies=settingsDict['QBIT_COOKIE'])
+
+
 
 def showLoggerLevel(settingsDict):
     logger.info('#' * 50)
